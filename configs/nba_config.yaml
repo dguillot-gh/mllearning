@@ -1,0 +1,24 @@
+name: nba
+data:
+  scores_file: nba_scores.csv
+  teams_file: nba_teams.csv
+features:
+  categorical:
+    - home_id
+    - away_id
+    - team_favorite_id
+    - arena
+  boolean:
+    - playoff_flag
+    - neutral_site
+  numeric:
+    - season
+    - game_number
+    - temperature
+    - spread_favorite
+    - over_under
+targets:
+  classification: home_team_win
+  regression: point_diff
+preprocessing:
+  team_mapping: team_name -> team_id

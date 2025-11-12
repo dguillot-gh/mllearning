@@ -1,0 +1,28 @@
+name: nascar
+data:
+  results_file: nascar race data.csv
+features:
+  categorical:
+    - driver
+    - track
+    - track_type
+    - manu
+    - team_name
+    - status
+  boolean: []
+  numeric:
+    - year
+    - race_num
+    - start
+    - car_num
+    - laps
+    - laps_led
+    - points
+    - stage_1
+    - stage_2
+    - stage_3_or_duel
+    - stage_points
+targets:
+  classification: race_win
+  regression: finishing_position
+preprocessing: {}

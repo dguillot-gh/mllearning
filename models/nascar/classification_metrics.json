@@ -1,0 +1,14 @@
+{
+  "task": "classification",
+  "accuracy": 0.9899856938483548,
+  "report": "              precision    recall  f1-score   support\n\n           0       0.99      1.00      0.99      1360\n           1       0.93      0.68      0.79        38\n\n    accuracy                           0.99      1398\n   macro avg       0.96      0.84      0.89      1398\nweighted avg       0.99      0.99      0.99      1398\n",
+  "pred_prob_mean": 0.02454959032020629,
+  "roc_auc": 0.9974651702786377,
+  "confusion_matrix": {
+    "tn": 1358,
+    "fp": 2,
+    "fn": 12,
+    "tp": 26
+  },
+  "test_start_season": 2024
+}
