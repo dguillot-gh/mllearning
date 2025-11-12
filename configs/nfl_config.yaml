@@ -1,0 +1,27 @@
+name: nfl
+data:
+  scores_file: spreadspoke_scores.csv
+  teams_file: nfl_teams.csv
+features:
+  categorical:
+    - home_id
+    - away_id
+    - team_favorite_id
+    - stadium
+    - weather_detail
+  boolean:
+    - schedule_playoff
+    - stadium_neutral
+  numeric:
+    - schedule_season
+    - schedule_week
+    - weather_temperature
+    - weather_wind_mph
+    - weather_humidity
+    - spread_favorite
+    - over_under_line
+targets:
+  classification: home_team_win
+  regression: point_diff
+preprocessing:
+  team_mapping: team_name -> team_id
