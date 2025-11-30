@@ -38,6 +38,29 @@ class BaseSport(ABC):
         """Apply sport-specific preprocessing to the dataframe."""
         pass
 
+    @abstractmethod
+    def get_entities(self) -> List[str]:
+        """Return a list of all available entities (drivers/teams)."""
+        pass
+
+    @abstractmethod
+    def get_teams(self) -> List[str]:
+        """Return a list of all available teams."""
+        pass
+
+    @abstractmethod
+    def get_drivers(self, team_id: Optional[str] = None) -> List[str]:
+        """Return a list of drivers, optionally filtered by team."""
+        pass
+
+    @abstractmethod
+    def get_entity_stats(self, entity_id: str) -> Dict[str, Any]:
+        """
+        Return a dictionary of stats for a specific entity.
+        Should return keys: 'stats' (dict), 'splits' (dict), 'history' (list).
+        """
+        pass
+
     def get_data_paths(self) -> Dict[str, Path]:
         """Get paths to data files based on config."""
         paths = {}

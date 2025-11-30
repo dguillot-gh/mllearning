@@ -15,17 +15,21 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.ensemble import RandomForestRegressor
 
 
-def build_pipeline(sport_features: Dict[str, List[str]], task: str) -> Pipeline:
+def build_pipeline(sport_features: Dict[str, List[str]], task: str, hyperparameters: Dict[str, Any] = None) -> Pipeline:
     """
     Build a scikit-learn pipeline for a given sport and task.
 
     Args:
         sport_features: Dict with keys 'categorical', 'boolean', 'numeric'
         task: 'classification' or 'regression'
+        hyperparameters: Optional dict of model hyperparameters
 
     Returns:
         Configured sklearn Pipeline
     """
+    if hyperparameters is None:
+        hyperparameters = {}
+
     categorical_features = sport_features.get('categorical', [])
     boolean_features = sport_features.get('boolean', [])
     numeric_features = sport_features.get('numeric', [])
@@ -47,12 +51,34 @@ def build_pipeline(sport_features: Dict[str, List[str]], task: str) -> Pipeline:
         remainder='drop'
     )
 
+    # Default hyperparameters
+    n_estimators = int(hyperparameters.get('n_estimators', 200))
+    max_depth = hyperparameters.get('max_depth')
+    if max_depth is not None:
+        max_depth = int(max_depth)
+    
     if task == 'classification':
-        # Increase max_iter to reduce convergence warnings
-        model = LogisticRegression(max_iter=5000, solver='lbfgs')
+        from sklearn.ensemble import RandomForestClassifier
+        class_weight = hyperparameters.get('class_weight', 'balanced')
+        # Handle 'None' string from UI
+        if class_weight == 'None':
+            class_weight = None
+
+        model = RandomForestClassifier(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            class_weight=class_weight,
+            random_state=42,
+            n_jobs=-1
+        )
         pipeline = Pipeline(steps=[('prep', preprocessor), ('clf', model)])
     elif task == 'regression':
-        model = RandomForestRegressor(n_estimators=200, random_state=42, n_jobs=-1)
+        model = RandomForestRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=42,
+            n_jobs=-1
+        )
         pipeline = Pipeline(steps=[('prep', preprocessor), ('reg', model)])
     else:
         raise ValueError("task must be 'classification' or 'regression'")
@@ -106,9 +132,51 @@ def evaluate_model(pipeline: Pipeline, X_test: Any, y_test: Any, task: str) -> D
         except Exception:
             pass
 
+        # Feature Importance (Random Forest Classifier)
+        try:
+            model = pipeline.named_steps['clf']
+            preprocessor = pipeline.named_steps['prep']
+            
+            if hasattr(model, 'feature_importances_'):
+                feature_names = preprocessor.get_feature_names_out()
+                importances = model.feature_importances_
+                
+                # Create list of (feature, importance) tuples
+                importance = []
+                for name, val in zip(feature_names, importances):
+                    importance.append({'feature': name, 'importance': float(val)})
+                
+                # Sort by importance
+                importance.sort(key=lambda x: x['importance'], reverse=True)
+                metrics['feature_importance'] = importance[:20]  # Top 20
+        except Exception as e:
+            print(f"Error extracting feature importance: {e}")
+            pass
+
     else:  # regression
         y_pred = pipeline.predict(X_test)
         metrics['mae'] = float(mean_absolute_error(y_test, y_pred))
         metrics['r2'] = float(r2_score(y_test, y_pred))
+
+        # Feature Importance (Random Forest)
+        try:
+            model = pipeline.named_steps['reg']
+            preprocessor = pipeline.named_steps['prep']
+            
+            if hasattr(model, 'feature_importances_'):
+                feature_names = preprocessor.get_feature_names_out()
+                importances = model.feature_importances_
+                
+                # Create list of (feature, importance) tuples
+                importance = []
+                for name, val in zip(feature_names, importances):
+                    importance.append({'feature': name, 'importance': float(val)})
+                
+                # Sort by importance
+                importance.sort(key=lambda x: x['importance'], reverse=True)
+                metrics['feature_importance'] = importance[:20]  # Top 20
+        except Exception as e:
+            print(f"Error extracting feature importance: {e}")
+            pass
 
     return metrics

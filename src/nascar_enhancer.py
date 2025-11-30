@@ -73,9 +73,25 @@ def calculate_features(df):
     
     # Track Type Features
     if 'track' in df.columns:
-        df['is_road_course'] = df['track'].astype(str).str.contains('Road|Glen|Sonoma|Circuit|Roval', case=False).astype(int)
-        df['is_superspeedway'] = df['track'].astype(str).str.contains('Daytona|Talladega', case=False).astype(int)
-        df['is_short_track'] = df['track'].astype(str).str.contains('Bristol|Martinsville|Richmond', case=False).astype(int)
+        # Create explicit track_type column
+        df['track_type'] = 'Speedway' # Default
+        
+        # Define masks
+        is_road = df['track'].astype(str).str.contains('Road|Glen|Sonoma|Circuit|Roval|Chicago Street', case=False)
+        is_ss = df['track'].astype(str).str.contains('Daytona|Talladega|Atlanta', case=False) # Atlanta is SS now
+        is_short = df['track'].astype(str).str.contains('Bristol|Martinsville|Richmond|Iowa|North Wilkesboro', case=False)
+        is_dirt = df['track'].astype(str).str.contains('Dirt', case=False)
+        
+        # Apply types
+        df.loc[is_road, 'track_type'] = 'Road Course'
+        df.loc[is_ss, 'track_type'] = 'Superspeedway'
+        df.loc[is_short, 'track_type'] = 'Short Track'
+        df.loc[is_dirt, 'track_type'] = 'Dirt'
+
+        # Keep boolean flags for ML compatibility if needed, or rely on one-hot encoding of track_type later
+        df['is_road_course'] = is_road.astype(int)
+        df['is_superspeedway'] = is_ss.astype(int)
+        df['is_short_track'] = is_short.astype(int)
 
     # 2. Driver Career Stats (Cumulative)
     # Use transform to ensure alignment with original index
@@ -156,9 +172,9 @@ def process_series(series_name, rda_filename, output_filename, data_dir):
     # 2. Standardize Columns
     df = standardize_columns(df, series_name)
     
-    # 3. Filter Years (Modern Era: 2012-2025)
+    # 3. Filter Years (Modern Era: 2012 onwards)
     if 'year' in df.columns:
-        df = df[(df['year'] >= 2012) & (df['year'] <= 2025)]
+        df = df[df['year'] >= 2012]
     
     # 4. Calculate Features
     try:

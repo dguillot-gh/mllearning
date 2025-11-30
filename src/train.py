@@ -16,7 +16,9 @@ def train_and_evaluate_sport(
     sport: BaseSport,
     task: str,
     out_dir: Path,
-    test_start_season: Optional[int] = None
+    test_start_season: Optional[int] = None,
+    train_start_season: Optional[int] = None,
+    hyperparameters: Optional[Dict[str, Any]] = None
 ) -> tuple:
     """
     Train and evaluate a model for a given sport.
@@ -26,6 +28,8 @@ def train_and_evaluate_sport(
         task: 'classification' or 'regression'
         out_dir: Directory to save model and metrics
         test_start_season: Season year for test split
+        train_start_season: Season year to start training data from
+        hyperparameters: Optional dict of model hyperparameters
 
     Returns:
         Tuple of (model_path, metrics_path, metrics_dict)
@@ -46,11 +50,18 @@ def train_and_evaluate_sport(
     score_cols = ['score_home', 'score_away']  # Generic score columns
     df = df.dropna(subset=[col for col in score_cols if col in df.columns] or [target_col])
 
+    # Filter by train_start_season if provided
+    time_col = 'schedule_season'  # Default, can be overridden per sport
+    if train_start_season:
+        if time_col in df.columns:
+            df = df[df[time_col] >= train_start_season]
+        elif 'year' in df.columns:
+             df = df[df['year'] >= train_start_season]
+
     # Build pipeline
-    pipeline = build_pipeline(feature_cols, task)
+    pipeline = build_pipeline(feature_cols, task, hyperparameters)
 
     # Train/test split
-    time_col = 'schedule_season'  # Default, can be overridden per sport
     train_df, test_df, split_season = chronological_split(df, test_start_season, time_col)
 
     # Flatten feature columns for training
@@ -69,6 +80,10 @@ def train_and_evaluate_sport(
     # Evaluate
     metrics = evaluate_model(pipeline, X_test, y_test, task)
     metrics['test_start_season'] = int(split_season)
+    
+    # Save hyperparameters used
+    if hyperparameters:
+        metrics['hyperparameters'] = hyperparameters
 
     # Save model and metrics
     out_dir.mkdir(parents=True, exist_ok=True)
