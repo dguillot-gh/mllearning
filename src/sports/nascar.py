@@ -734,6 +734,11 @@ class NASCARSport(BaseSport):
         top_5 = len(driver_df[driver_df['finishing_position'] <= 5])
         top_10 = len(driver_df[driver_df['finishing_position'] <= 10])
         
+        # New Stats
+        laps_led = int(driver_df['laps_led'].sum()) if 'laps_led' in driver_df.columns else 0
+        poles = len(driver_df[driver_df['start'] == 1]) if 'start' in driver_df.columns else 0
+        dnfs = len(driver_df[driver_df['status'].str.lower() != 'running']) if 'status' in driver_df.columns else 0
+        
         avg_finish = driver_df['finishing_position'].mean() if total_races > 0 else 0
         avg_start = driver_df['start'].mean() if 'start' in driver_df.columns and total_races > 0 else 0
         
@@ -743,6 +748,9 @@ class NASCARSport(BaseSport):
             "Win %": f"{(wins/total_races)*100:.1f}%" if total_races > 0 else "0.0%",
             "Top 5": top_5,
             "Top 10": top_10,
+            "Poles": poles,
+            "Laps Led": laps_led,
+            "DNFs": dnfs,
             "Avg Start": f"{avg_start:.1f}",
             "Avg Finish": f"{avg_finish:.1f}",
         }

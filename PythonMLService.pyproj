@@ -13,6 +13,7 @@
     <Name>PythonMLService</Name>
     <RootNamespace>PythonMLService</RootNamespace>
     <InterpreterId>MSBuild|env|$(MSBuildProjectFullPath)</InterpreterId>
+    <TestFramework>Pytest</TestFramework>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
@@ -34,6 +35,8 @@
     </Interpreter>
   </ItemGroup>
   <ItemGroup>
+    <Folder Include=".github\" />
+    <Folder Include=".github\workflows\" />
     <Folder Include="api\" />
     <Folder Include="api\__pycache__\" />
     <Folder Include="configs\" />
@@ -1182,6 +1185,9 @@
     <Folder Include="models\" />
     <Folder Include="models\nascar\" />
     <Folder Include="models\nascar\csv_all\" />
+    <Folder Include="models\nascar\cup\" />
+    <Folder Include="models\nascar\truck\" />
+    <Folder Include="models\nascar\xfinity\" />
     <Folder Include="models\nba\" />
     <Folder Include="models\nfl\" />
     <Folder Include="scripts\" />
@@ -8248,8 +8254,20 @@
     <Content Include="models\nascar\csv_all\classification_model.joblib" />
     <Content Include="models\nascar\csv_all\regression_metrics.json" />
     <Content Include="models\nascar\csv_all\regression_model.joblib" />
+    <Content Include="models\nascar\cup\classification_metrics.json" />
+    <Content Include="models\nascar\cup\classification_model.joblib" />
+    <Content Include="models\nascar\cup\regression_metrics.json" />
+    <Content Include="models\nascar\cup\regression_model.joblib" />
     <Content Include="models\nascar\regression_metrics.json" />
     <Content Include="models\nascar\regression_model.joblib" />
+    <Content Include="models\nascar\truck\classification_metrics.json" />
+    <Content Include="models\nascar\truck\classification_model.joblib" />
+    <Content Include="models\nascar\truck\regression_metrics.json" />
+    <Content Include="models\nascar\truck\regression_model.joblib" />
+    <Content Include="models\nascar\xfinity\classification_metrics.json" />
+    <Content Include="models\nascar\xfinity\classification_model.joblib" />
+    <Content Include="models\nascar\xfinity\regression_metrics.json" />
+    <Content Include="models\nascar\xfinity\regression_model.joblib" />
     <Content Include="models\nfl\classification_metrics.json" />
     <Content Include="models\nfl\classification_model.joblib" />
     <Content Include="requirements.txt" />
@@ -8262,9 +8280,15 @@
     <Content Include="src\__pycache__\data_loader.cpython-313.pyc" />
     <Content Include="src\__pycache__\model_pipeline.cpython-313.pyc" />
     <Content Include="src\__pycache__\train.cpython-313.pyc" />
+    <Content Include="update_nascar_data.bat" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="analyze_data.py" />
     <Compile Include="api\app.py" />
+    <Compile Include="check_cup_teams.py" />
+    <Compile Include="compare_sources.py" />
+    <Compile Include="debug_drivers.py" />
+    <Compile Include="debug_teams.py" />
     <Compile Include="env\Lib\site-packages\dateutil\easter.py" />
     <Compile Include="env\Lib\site-packages\dateutil\parser\isoparser.py" />
     <Compile Include="env\Lib\site-packages\dateutil\parser\_parser.py" />
@@ -12218,6 +12242,7 @@
     <Compile Include="env\Lib\site-packages\yaml\tokens.py" />
     <Compile Include="env\Lib\site-packages\yaml\__init__.py" />
     <Compile Include="env\Lib\site-packages\_yaml\__init__.py" />
+    <Compile Include="generate_static_data.py" />
     <Compile Include="scripts\train_model.py" />
     <Compile Include="src\data_loader.py" />
     <Compile Include="src\model_pipeline.py" />
@@ -12229,6 +12254,12 @@
     <Compile Include="src\train.py" />
     <Compile Include="src\__init__.py" />
     <Compile Include="tests\__init__.py" />
+    <Compile Include="verify_hyperparams.py" />
+    <Compile Include="verify_profile_stats.py" />
+    <Compile Include="verify_profile_year_filter.py" />
+    <Compile Include="verify_teams.py" />
+    <Compile Include="verify_teams_list.py" />
+    <Compile Include="verify_team_sorting.py" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in

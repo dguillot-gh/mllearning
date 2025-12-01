@@ -20,6 +20,7 @@ from data_loader import load_sport_data
 import train as train_mod
 import nascar_enhancer
 from sport_factory import SportFactory
+from simulation import SimulationEngine
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -521,6 +522,38 @@ def enhance_data(sport: str):
             raise HTTPException(status_code=400, detail=f"Enhancement not supported for {sport}")
     except Exception as e:
         logger.error(f"Error enhancing data for {sport}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+class SimulationRequest(BaseModel):
+    drivers: List[str]
+    year: int
+    track_type: str = "Intermediate"
+    num_simulations: int = 1000
+
+
+@app.post('/{sport}/simulate')
+def simulate_race(sport: str, payload: SimulationRequest, series: Optional[str] = None):
+    """
+    Run Monte Carlo simulation for a race.
+    """
+    try:
+        if sport != 'nascar':
+             raise HTTPException(status_code=400, detail="Simulation only supported for NASCAR")
+             
+        s, _ = SportFactory.get_sport(sport, series)
+        engine = SimulationEngine(s)
+        
+        results = engine.run_monte_carlo(
+            drivers=payload.drivers,
+            year=payload.year,
+            track_type=payload.track_type,
+            num_simulations=payload.num_simulations
+        )
+        return results
+    except Exception as e:
+        logger.error(f"Error running simulation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
