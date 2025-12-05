@@ -3,3 +3,30 @@
 ################################################################################
 
 /SportsBettingAnalyzer/nul
+
+# Environment
+env/
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.user
+
+# Build artifacts  
+bin/
+obj/
+*.dll
+*.exe
+
+# Logs
+*.log
+
+# Note: JSON data files in data/ are NOT ignored - they should be committed
+# The following are commonly ignored:
+*.tmp
+*.bak

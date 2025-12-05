@@ -503,6 +503,27 @@ class NASCARSport(BaseSport):
 
         # Concatenate all
         df = pd.concat(frames, ignore_index=True, sort=False)
+        
+        # Populate _active_teams and _active_drivers from raw data
+        # Get recent data (last 2 years) for active drivers/teams
+        if 'schedule_season' in df.columns:
+            recent_years = sorted(df['schedule_season'].dropna().unique())[-2:]
+            recent_df = df[df['schedule_season'].isin(recent_years)]
+        else:
+            recent_df = df
+            
+        if 'team_name' in recent_df.columns:
+            self._active_teams = sorted(recent_df['team_name'].dropna().unique().tolist())
+        else:
+            self._active_teams = []
+            
+        if 'driver' in recent_df.columns:
+            self._active_drivers = sorted(recent_df['driver'].dropna().unique().tolist())
+        else:
+            self._active_drivers = []
+            
+        print(f"DEBUG: Fallback loaded {len(self._active_teams)} teams and {len(self._active_drivers)} drivers from raw data.")
+        
         return self.preprocess_data(df)
 
     def get_entities(self) -> List[str]:
@@ -825,9 +846,9 @@ class NASCARSport(BaseSport):
                     "Wins": len(group[group['finishing_position'] == 1])
                 }
 
-        # --- History (Recent 10 or all if filtered by year) ---
-        # If year is selected, show all races for that year. If not, show recent 10.
-        history_df = driver_df if year else driver_df.head(10)
+        # --- History (Recent races - show all for year filter, otherwise limit to 100) ---
+        # If year is selected, show all races for that year. If not, show recent 100.
+        history_df = driver_df if year else driver_df.head(100)
         
         history = []
         for _, row in history_df.iterrows():
@@ -846,3 +867,4 @@ class NASCARSport(BaseSport):
             "history": history,
             "years": available_years
         }
+

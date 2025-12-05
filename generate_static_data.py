@@ -10,8 +10,12 @@ def generate_static_data():
     containing active entities and historical data.
     """
     base_dir = Path(__file__).parent
-    raw_dir = base_dir / 'data' / 'nascar' / 'raw'
-    output_file = base_dir / 'data' / 'nascar' / 'nascar_data.json'
+    # Read from mllearning/data/nascar/raw (where .rda files are)
+    raw_dir = base_dir / 'mllearning' / 'data' / 'nascar' / 'raw'
+    # Output to data/nascar (where NASCAR sport class expects it)
+    output_dir = base_dir / 'data' / 'nascar'
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_file = output_dir / 'nascar_data.json'
     
     print(f"Scanning {raw_dir} for .rda files...")
     rda_files = sorted(raw_dir.glob('*.rda'))
