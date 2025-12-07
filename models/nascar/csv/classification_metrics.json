@@ -1,0 +1,96 @@
+{
+  "task": "classification",
+  "accuracy": 0.972980825101685,
+  "report": "              precision    recall  f1-score   support\n\n         0.0       0.97      1.00      0.99      6698\n         1.0       0.00      0.00      0.00       186\n\n    accuracy                           0.97      6884\n   macro avg       0.49      0.50      0.49      6884\nweighted avg       0.95      0.97      0.96      6884\n",
+  "pred_prob_mean": 0.023313480534572925,
+  "roc_auc": 0.951044606478583,
+  "confusion_matrix": {
+    "tn": 6698,
+    "fp": 0,
+    "fn": 186,
+    "tp": 0
+  },
+  "feature_importance": [
+    {
+      "feature": "num__laps_led",
+      "importance": 0.19676214613463178
+    },
+    {
+      "feature": "num__career_win_pct",
+      "importance": 0.05201106700827887
+    },
+    {
+      "feature": "num__start",
+      "importance": 0.046521490596637786
+    },
+    {
+      "feature": "num__career_avg_finish",
+      "importance": 0.045562205248342195
+    },
+    {
+      "feature": "num__avg_finish_last_10",
+      "importance": 0.036553079368210645
+    },
+    {
+      "feature": "num__qualified_top10",
+      "importance": 0.03533704519649243
+    },
+    {
+      "feature": "num__avg_finish_last_5",
+      "importance": 0.03381083727974453
+    },
+    {
+      "feature": "num__team_avg_finish_this_season",
+      "importance": 0.031767205894146916
+    },
+    {
+      "feature": "num__career_top5",
+      "importance": 0.03136081080865913
+    },
+    {
+      "feature": "num__avg_finish_last_3",
+      "importance": 0.027848524359223085
+    },
+    {
+      "feature": "num__career_wins",
+      "importance": 0.026494096226437072
+    },
+    {
+      "feature": "num__career_top10",
+      "importance": 0.024476302223412932
+    },
+    {
+      "feature": "num__team_top5_this_season",
+      "importance": 0.024419100512694625
+    },
+    {
+      "feature": "num__best_finish_at_track",
+      "importance": 0.02297233822943635
+    },
+    {
+      "feature": "num__avg_finish_at_track",
+      "importance": 0.021688950263322283
+    },
+    {
+      "feature": "num__stage_2",
+      "importance": 0.020540927412732658
+    },
+    {
+      "feature": "num__team_wins_this_season",
+      "importance": 0.01965618889724894
+    },
+    {
+      "feature": "num__qualified_top5",
+      "importance": 0.01684783995759439
+    },
+    {
+      "feature": "num__career_races",
+      "importance": 0.016145744092476082
+    },
+    {
+      "feature": "num__manu_win_pct_this_season",
+      "importance": 0.01594363887293168
+    }
+  ],
+  "test_start_season": 2024
+}

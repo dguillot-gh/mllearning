@@ -102,6 +102,19 @@ class NBASport(BaseSport):
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
+        if 'schedule_season' not in df.columns and 'season' in df.columns:
+            df['schedule_season'] = df['season']
+        elif 'schedule_season' not in df.columns:
+            df['schedule_season'] = 2024 # Default fallback
+
+        # Create target column 'is_all_star' (approximation: >20 PPG)
+        if 'is_all_star' not in df.columns:
+            if 'pts_per_game' in df.columns:
+                df['is_all_star'] = (df['pts_per_game'] >= 20.0).astype(int)
+            else:
+                # Fallback if no points data
+                df['is_all_star'] = 0
+
         return df
 
     def get_feature_columns(self) -> Dict[str, List[str]]:

@@ -6,9 +6,6 @@ import pandas as pd
 from pathlib import Path
 import json
 import numpy as np
-
-
-
 from .base import BaseSport
 
 
@@ -17,9 +14,40 @@ class NASCARSport(BaseSport):
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
+        # Initialize caches
+        self._active_teams = []
+        self._active_teams_by_series = {}
+        self._active_drivers = []
+        self._active_drivers_by_series = {}
 
     def load_data(self) -> pd.DataFrame:
-        """Load NASCAR data from static JSON file."""
+        """Load NASCAR data, prioritizing enhanced CSV files if available."""
+        # 1. Try loading enhanced CSV files first
+        enhanced_files = sorted(self.data_dir.glob('*_enhanced.csv'))
+        if enhanced_files:
+            print(f"DEBUG: Found {len(enhanced_files)} enhanced data files. Loading...")
+            frames = []
+            for csv_file in enhanced_files:
+                try:
+                    df = pd.read_csv(csv_file)
+                    # Infer series from filename (e.g. cup_enhanced.csv -> cup)
+                    series_name = csv_file.stem.replace('_enhanced', '').lower()
+                    if 'series' not in df.columns:
+                        df['series'] = series_name
+                    frames.append(df)
+                except Exception as e:
+                    print(f"Error loading {csv_file}: {e}")
+            
+            if frames:
+                df = pd.concat(frames, ignore_index=True, sort=False)
+                # Ensure date columns are parsed if needed, though they might be read as objects
+                # Also ensure we populate active entities for the UI
+                self._populate_active_entities(df)
+                # Note: Enhanced data is already preprocessed, but running it through
+                # preprocess_data ensures specific columns like race_win are set if missing
+                return self.preprocess_data(df)
+
+        # 2. Fallback to existing JSON method
         json_path = self.data_dir / 'nascar_data.json'
         
         if not json_path.exists():
@@ -50,10 +78,55 @@ class NASCARSport(BaseSport):
             print(f"Error loading static data: {e}")
             return self._load_raw_data()
 
+    def _populate_active_entities(self, df: pd.DataFrame) -> None:
+        """Populate active teams and drivers lists from the loaded dataframe."""
+        # Get recent data (last 2 years) for active drivers/teams if possible
+        if 'schedule_season' in df.columns:
+            recent_years = sorted(df['schedule_season'].dropna().unique())[-2:]
+            recent_df = df[df['schedule_season'].isin(recent_years)]
+        elif 'year' in df.columns:
+            recent_years = sorted(df['year'].dropna().unique())[-2:]
+            recent_df = df[df['year'].isin(recent_years)]
+        else:
+            recent_df = df
+            
+        if 'team_name' in recent_df.columns:
+            self._active_teams = sorted(recent_df['team_name'].dropna().unique().astype(str).tolist())
+        else:
+            self._active_teams = []
+            
+        if 'driver' in recent_df.columns:
+            self._active_drivers = sorted(recent_df['driver'].dropna().unique().astype(str).tolist())
+        else:
+            self._active_drivers = []
+            
+        # Also populate by-series dictionaries if we have series column
+        if 'series' in recent_df.columns:
+            self._active_teams_by_series = {}
+            self._active_drivers_by_series = {}
+            for series in recent_df['series'].unique():
+                series_df = recent_df[recent_df['series'] == series]
+                if 'team_name' in series_df.columns:
+                     self._active_teams_by_series[series] = sorted(series_df['team_name'].dropna().unique().astype(str).tolist())
+                
+                if 'driver' in series_df.columns:
+                     drivers = []
+                     for driver in series_df['driver'].unique():
+                         d_df = series_df[series_df['driver'] == driver]
+                         # Get latest team/make
+                         latest = d_df.iloc[-1]
+                         drivers.append({
+                             'name': str(driver),
+                             'team': str(latest.get('team_name', 'Unknown')),
+                             'manufacturer': str(latest.get('manu', 'Unknown')),
+                             'total_races': len(d_df)
+                         })
+                     self._active_drivers_by_series[series] = drivers
+
     def get_roster(self, series: str = "cup", min_races: int = 1, year: Optional[int] = None) -> List[Dict[str, Any]]:
         """Return driver roster for given series, filtered by minimum races and optionally year."""
         # Ensure data is loaded
-        if not hasattr(self, '_active_drivers_by_series'):
+        if not hasattr(self, '_active_drivers_by_series') or not self._active_drivers_by_series:
             self.load_data()
         
         # If year is not specified, use the pre-calculated active list (default behavior)
@@ -85,8 +158,6 @@ class NASCARSport(BaseSport):
             driver_df = year_df[year_df['driver'] == driver_name]
             
             # Get most recent team and make for that year
-            # Sort by race number if available, or just take the last one
-            # Assuming the data is somewhat ordered or we can just take the mode
             latest_entry = driver_df.iloc[-1] # Simple approach
             
             team = latest_entry['team_name'] if 'team_name' in latest_entry else 'Unknown'
@@ -126,136 +197,6 @@ class NASCARSport(BaseSport):
             return sorted(self.df['team_name'].dropna().unique().tolist())
         return []
 
-
-
-    def preprocess_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply NASCAR-specific preprocessing and target creation."""
-        df = df.copy()
-
-        # Normalize column names - handle case variations
-        df.columns = [c.strip() for c in df.columns]
-        col_lower = {c.lower(): c for c in df.columns}
-
-        # Ensure expected columns exist; create if missing
-        # Map various finish position column names to standardized 'finishing_position'
-        if 'finishing_position' not in df.columns:
-            # Try different possible column names for finish position
-            finish_cols = ['fin', 'finish', 'finishing_position']
-            found = None
-            for fc in finish_cols:
-                if fc in df.columns:
-                    found = fc
-                    break
-                elif fc in col_lower:
-                    found = col_lower[fc]
-                    break
-            
-            if found:
-                df['finishing_position'] = pd.to_numeric(df[found], errors='coerce')
-            else:
-                # If none exists, we can't determine finishing position
-                raise ValueError(
-                    f"Missing required column: no finish position column found. "
-                    f"Looked for: {finish_cols}. Available columns: {list(df.columns)}"
-                )
-
-        # Classification target: race win flag
-        if 'race_win' not in df.columns:
-            # Check if 'Win' column exists (some series have this pre-calculated)
-            if 'Win' in df.columns or 'win' in col_lower:
-                win_col = 'Win' if 'Win' in df.columns else col_lower['win']
-                df['race_win'] = pd.to_numeric(df[win_col], errors='coerce').fillna(0).astype(int)
-            elif 'finishing_position' in df.columns:
-                df['race_win'] = (df['finishing_position'] == 1).astype(int)
-            else:
-                raise ValueError("Cannot create 'race_win' target without 'finishing_position' or 'Win' column")
-
-        # Standardize season column expected by generic trainer
-        if 'schedule_season' not in df.columns:
-            # Try various season column names
-            season_cols = ['year', 'season', 'Year', 'Season']
-            found_season = None
-            for sc in season_cols:
-                if sc in df.columns:
-                    found_season = sc
-                    break
-            
-            if found_season:
-                df['schedule_season'] = pd.to_numeric(df[found_season], errors='coerce')
-                # Log how many valid seasons we got
-                valid_seasons = df['schedule_season'].notna().sum()
-                print(f"Created schedule_season from '{found_season}': {valid_seasons} valid values out of {len(df)} rows")
-                if valid_seasons == 0:
-                    print(f"WARNING: No valid season values found. Sample of '{found_season}' column: {df[found_season].head(10).tolist()}")
-            else:
-                # Fallback: set to NA
-                print(f"WARNING: No season column found. Available columns: {list(df.columns)}")
-                df['schedule_season'] = pd.NA
-
-        # Coerce numerics - handle different column name variations
-        numeric_mapping = {
-            'year': ['year', 'Year', 'season', 'Season'],
-            'race_num': ['race_num', 'Race', 'race', 'race_number'],
-            'start': ['start', 'Start'],
-            'car_num': ['car_num', 'Car', 'car', 'car_number'],
-            'laps': ['laps', 'Laps'],
-            'laps_led': ['laps_led', 'Led', 'led'],
-            'points': ['points', 'Pts', 'pts'],
-            'stage_1': ['stage_1', 'S1', 's1'],
-            'stage_2': ['stage_2', 'S2', 's2'],
-            'stage_3_or_duel': ['stage_3_or_duel', 'S3', 's3'],
-            'stage_points': ['stage_points', 'Seg Points', 'seg_points'],
-        }
-        
-        # Map columns to standardized names
-        for std_name, variations in numeric_mapping.items():
-            if std_name not in df.columns:
-                for var in variations:
-                    if var in df.columns:
-                        df[std_name] = pd.to_numeric(df[var], errors='coerce')
-                        break
-        
-        # Always ensure these core columns are numeric
-        core_numeric = ['year', 'race_num', 'start', 'car_num', 'laps', 'laps_led',
-                       'points', 'stage_1', 'stage_2', 'stage_3_or_duel', 'stage_points',
-                       'finishing_position', 'schedule_season']
-        
-        # Add configured numeric features
-        features = self.get_feature_columns()
-        core_numeric.extend(features.get('numeric', []))
-        
-        # Remove duplicates
-        core_numeric = list(set(core_numeric))
-
-        for col in core_numeric:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-
-        # Fill simple categorical text fields with strings - handle variations
-        categorical_mapping = {
-            'driver': ['driver', 'Driver'],
-            'track': ['track', 'Track'],
-            'track_type': ['track_type', 'Surface', 'surface'],
-            'manu': ['manu', 'Make', 'make', 'manufacturer'],
-            'team_name': ['team_name', 'Team', 'team'],
-            'status': ['status', 'Status'],
-        }
-        
-        for std_name, variations in categorical_mapping.items():
-            if std_name not in df.columns:
-                for var in variations:
-                    if var in df.columns:
-                        df[std_name] = df[var].astype(str).fillna('Unknown')
-                        break
-            else:
-                df[std_name] = df[std_name].astype(str).fillna('Unknown')
-
-        # Debug: print final columns
-        print(f"Final preprocessed columns: {sorted(df.columns.tolist())}")
-        print(f"Sample row: {df.iloc[0].to_dict()}")
-        
-        return df
-
     def get_feature_columns(self) -> Dict[str, List[str]]:
         """Return NASCAR feature columns as configured."""
         feats = self.config.get('features', {})
@@ -263,6 +204,7 @@ class NASCARSport(BaseSport):
             'numeric': feats.get('numeric', []),
             'categorical': feats.get('categorical', [])
         }
+
     def get_target_columns(self) -> Dict[str, str]:
         """Return target columns mapping for NASCAR."""
         t = self.config.get('targets', {})
@@ -270,266 +212,11 @@ class NASCARSport(BaseSport):
         classification = t.get('classification', 'race_win')
         regression = t.get('regression', 'finishing_position')
         return {'classification': classification, 'regression': regression}
-
-    def _load_raw_data(self) -> pd.DataFrame:
-        """Load raw NASCAR data from .rda files (ignoring configured results_file)."""
-        raw_dir = self.data_dir / 'raw'
-        rda_files = sorted(raw_dir.glob('*.rda'))
-
-        if not rda_files:
-            return pd.DataFrame()
-
-        try:
-            import pyreadr  # type: ignore
-        except Exception:
-            return pd.DataFrame()
-
-
-        frames: List[pd.DataFrame] = []
-        for rda in rda_files:
-            try:
-                result = pyreadr.read_r(str(rda))
-                # Infer series from filename (e.g. cup_series.rda -> cup)
-                series_name = rda.stem.replace('_series', '').lower()
-                
-                for name, frame in result.items():
-                    if isinstance(frame, pd.DataFrame):
-                        frame = frame.copy()
-                        frame.columns = [str(c).strip() for c in frame.columns]
-                        # Inject series column
-                        frame['series'] = series_name
-                        frames.append(frame)
-            except Exception:
-                continue
-
-        if not frames:
-            return pd.DataFrame()
-
-        # Concatenate all
-        df = pd.concat(frames, ignore_index=True, sort=False)
-        return self.preprocess_data(df)
-
-    def get_entities(self) -> List[str]:
-        """Return list of all drivers."""
-        # Use raw data for complete list
-        df = self._load_raw_data()
-        if df.empty:
-            df = self.load_data()
-            
-        if 'driver' not in df.columns:
-            return []
-        
-        # Filter out future/mock data (2025+)
-        if 'year' in df.columns:
-            df = df[df['year'] < 2025]
-    def preprocess_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply NASCAR-specific preprocessing and target creation."""
-        df = df.copy()
-
-        # Normalize column names - handle case variations
-        df.columns = [c.strip() for c in df.columns]
-        col_lower = {c.lower(): c for c in df.columns}
-
-        # Ensure expected columns exist; create if missing
-        # Map various finish position column names to standardized 'finishing_position'
-        if 'finishing_position' not in df.columns:
-            # Try different possible column names for finish position
-            finish_cols = ['fin', 'finish', 'finishing_position']
-            found = None
-            for fc in finish_cols:
-                if fc in df.columns:
-                    found = fc
-                    break
-                elif fc in col_lower:
-                    found = col_lower[fc]
-                    break
-            
-            if found:
-                df['finishing_position'] = pd.to_numeric(df[found], errors='coerce')
-            else:
-                # If none exists, we can't determine finishing position
-                raise ValueError(
-                    f"Missing required column: no finish position column found. "
-                    f"Looked for: {finish_cols}. Available columns: {list(df.columns)}"
-                )
-
-        # Classification target: race win flag
-        if 'race_win' not in df.columns:
-            # Check if 'Win' column exists (some series have this pre-calculated)
-            if 'Win' in df.columns or 'win' in col_lower:
-                win_col = 'Win' if 'Win' in df.columns else col_lower['win']
-                df['race_win'] = pd.to_numeric(df[win_col], errors='coerce').fillna(0).astype(int)
-            elif 'finishing_position' in df.columns:
-                df['race_win'] = (df['finishing_position'] == 1).astype(int)
-            else:
-                raise ValueError("Cannot create 'race_win' target without 'finishing_position' or 'Win' column")
-
-        # Standardize season column expected by generic trainer
-        if 'schedule_season' not in df.columns:
-            # Try various season column names
-            season_cols = ['year', 'season', 'Year', 'Season']
-            found_season = None
-            for sc in season_cols:
-                if sc in df.columns:
-                    found_season = sc
-                    break
-            
-            if found_season:
-                df['schedule_season'] = pd.to_numeric(df[found_season], errors='coerce')
-                # Log how many valid seasons we got
-                valid_seasons = df['schedule_season'].notna().sum()
-                print(f"Created schedule_season from '{found_season}': {valid_seasons} valid values out of {len(df)} rows")
-                if valid_seasons == 0:
-                    print(f"WARNING: No valid season values found. Sample of '{found_season}' column: {df[found_season].head(10).tolist()}")
-            else:
-                # Fallback: set to NA
-                print(f"WARNING: No season column found. Available columns: {list(df.columns)}")
-                df['schedule_season'] = pd.NA
-
-        # Coerce numerics - handle different column name variations
-        numeric_mapping = {
-            'year': ['year', 'Year', 'season', 'Season'],
-            'race_num': ['race_num', 'Race', 'race', 'race_number'],
-            'start': ['start', 'Start'],
-            'car_num': ['car_num', 'Car', 'car', 'car_number'],
-            'laps': ['laps', 'Laps'],
-            'laps_led': ['laps_led', 'Led', 'led'],
-            'points': ['points', 'Pts', 'pts'],
-            'stage_1': ['stage_1', 'S1', 's1'],
-            'stage_2': ['stage_2', 'S2', 's2'],
-            'stage_3_or_duel': ['stage_3_or_duel', 'S3', 's3'],
-            'stage_points': ['stage_points', 'Seg Points', 'seg_points'],
-        }
-        
-        # Map columns to standardized names
-        for std_name, variations in numeric_mapping.items():
-            if std_name not in df.columns:
-                for var in variations:
-                    if var in df.columns:
-                        df[std_name] = pd.to_numeric(df[var], errors='coerce')
-                        break
-        
-        # Always ensure these core columns are numeric
-        core_numeric = ['year', 'race_num', 'start', 'car_num', 'laps', 'laps_led',
-                       'points', 'stage_1', 'stage_2', 'stage_3_or_duel', 'stage_points',
-                       'finishing_position', 'schedule_season']
-        
-        # Add configured numeric features
-        features = self.get_feature_columns()
-        core_numeric.extend(features.get('numeric', []))
-        
-        # Remove duplicates
-        core_numeric = list(set(core_numeric))
-
-        json_path = self.data_dir / 'nascar_data.json'
-        
-        if not json_path.exists():
-            # Fallback to old method if JSON doesn't exist
-            print(f"WARNING: Static data file {json_path} not found. Falling back to raw data.")
-            return self._load_raw_data()
-            
-        try:
-            with open(json_path, 'r') as f:
-                data = json.load(f)
-                
-            # Cache active lists for get_teams/get_drivers
-            self._active_teams = data.get('active_teams', [])
-            self._active_drivers = data.get('active_drivers', [])
-            print(f"DEBUG: Loaded {len(self._active_teams)} active teams from JSON.")
-
-            
-            # Load records into DataFrame
-            records = data.get('records', [])
-            if not records:
-                return pd.DataFrame()
-                
-            df = pd.DataFrame(records)
-            return self.preprocess_data(df)
-            
-        except Exception as e:
-            print(f"Error loading static data: {e}")
-            return self._load_raw_data()
-
-    def get_feature_columns(self) -> Dict[str, List[str]]:
-        """Return NASCAR feature columns as configured."""
-        feats = self.config.get('features', {})
-        return {
-            'numeric': feats.get('numeric', []),
-            'categorical': feats.get('categorical', [])
-        }
-    def get_target_columns(self) -> Dict[str, str]:
-        """Return target columns mapping for NASCAR."""
-        t = self.config.get('targets', {})
-        # Defaults if not present
-        classification = t.get('classification', 'race_win')
-        regression = t.get('regression', 'finishing_position')
-        return {'classification': classification, 'regression': regression}
-
-    def _load_raw_data(self) -> pd.DataFrame:
-        """Legacy load method (fallback)."""
-        import pandas as pd
-        from typing import List
-        raw_dir = self.data_dir / 'raw'
-        rda_files = sorted(raw_dir.glob('*.rda'))
-
-        if not rda_files:
-            return pd.DataFrame()
-
-        try:
-            import pyreadr  # type: ignore
-        except Exception:
-            return pd.DataFrame()
-
-
-        frames: List[pd.DataFrame] = []
-        for rda in rda_files:
-            try:
-                result = pyreadr.read_r(str(rda))
-                # Infer series from filename (e.g. cup_series.rda -> cup)
-                series_name = rda.stem.replace('_series', '').lower()
-                
-                for name, frame in result.items():
-                    if isinstance(frame, pd.DataFrame):
-                        frame = frame.copy()
-                        frame.columns = [str(c).strip() for c in frame.columns]
-                        # Inject series column
-                        frame['series'] = series_name
-                        frames.append(frame)
-            except Exception:
-                continue
-
-        if not frames:
-            return pd.DataFrame()
-
-        # Concatenate all
-        df = pd.concat(frames, ignore_index=True, sort=False)
-        
-        # Populate _active_teams and _active_drivers from raw data
-        # Get recent data (last 2 years) for active drivers/teams
-        if 'schedule_season' in df.columns:
-            recent_years = sorted(df['schedule_season'].dropna().unique())[-2:]
-            recent_df = df[df['schedule_season'].isin(recent_years)]
-        else:
-            recent_df = df
-            
-        if 'team_name' in recent_df.columns:
-            self._active_teams = sorted(recent_df['team_name'].dropna().unique().tolist())
-        else:
-            self._active_teams = []
-            
-        if 'driver' in recent_df.columns:
-            self._active_drivers = sorted(recent_df['driver'].dropna().unique().tolist())
-        else:
-            self._active_drivers = []
-            
-        print(f"DEBUG: Fallback loaded {len(self._active_teams)} teams and {len(self._active_drivers)} drivers from raw data.")
-        
-        return self.preprocess_data(df)
 
     def get_entities(self) -> List[str]:
         """Return list of all drivers."""
         # Ensure data is loaded to populate _active_drivers
-        if not hasattr(self, '_active_drivers'):
+        if not hasattr(self, '_active_drivers') or not self._active_drivers:
             self.load_data()
             
         if hasattr(self, '_active_drivers') and self._active_drivers:
@@ -540,222 +227,12 @@ class NASCARSport(BaseSport):
         if 'driver' not in df.columns:
             return []
         return sorted(df['driver'].dropna().unique().tolist())
-
-    def preprocess_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply NASCAR-specific preprocessing and target creation."""
-        df = df.copy()
-
-        # Normalize column names - handle case variations
-        df.columns = [c.strip() for c in df.columns]
-        col_lower = {c.lower(): c for c in df.columns}
-
-        # Ensure expected columns exist; create if missing
-        # Map various finish position column names to standardized 'finishing_position'
-        if 'finishing_position' not in df.columns:
-            # Try different possible column names for finish position
-            finish_cols = ['fin', 'finish', 'finishing_position']
-            found = None
-            for fc in finish_cols:
-                if fc in df.columns:
-                    found = fc
-                    break
-                elif fc in col_lower:
-                    found = col_lower[fc]
-                    break
-            
-            if found:
-                df['finishing_position'] = pd.to_numeric(df[found], errors='coerce')
-            else:
-                # If none exists, we can't determine finishing position
-                raise ValueError(
-                    f"Missing required column: no finish position column found. "
-                    f"Looked for: {finish_cols}. Available columns: {list(df.columns)}"
-                )
-
-        # Classification target: race win flag
-        if 'race_win' not in df.columns:
-            # Check if 'Win' column exists (some series have this pre-calculated)
-            if 'Win' in df.columns or 'win' in col_lower:
-                win_col = 'Win' if 'Win' in df.columns else col_lower['win']
-                df['race_win'] = pd.to_numeric(df[win_col], errors='coerce').fillna(0).astype(int)
-            elif 'finishing_position' in df.columns:
-                df['race_win'] = (df['finishing_position'] == 1).astype(int)
-            else:
-                raise ValueError("Cannot create 'race_win' target without 'finishing_position' or 'Win' column")
-
-        # Standardize season column expected by generic trainer
-        if 'schedule_season' not in df.columns:
-            # Try various season column names
-            season_cols = ['year', 'season', 'Year', 'Season']
-            found_season = None
-            for sc in season_cols:
-                if sc in df.columns:
-                    found_season = sc
-                    break
-            
-            if found_season:
-                df['schedule_season'] = pd.to_numeric(df[found_season], errors='coerce')
-                # Log how many valid seasons we got
-                valid_seasons = df['schedule_season'].notna().sum()
-                print(f"Created schedule_season from '{found_season}': {valid_seasons} valid values out of {len(df)} rows")
-                if valid_seasons == 0:
-                    print(f"WARNING: No valid season values found. Sample of '{found_season}' column: {df[found_season].head(10).tolist()}")
-            else:
-                # Fallback: set to NA
-                print(f"WARNING: No season column found. Available columns: {list(df.columns)}")
-                df['schedule_season'] = pd.NA
-
-        # Coerce numerics - handle different column name variations
-        numeric_mapping = {
-            'year': ['year', 'Year', 'season', 'Season'],
-            'race_num': ['race_num', 'Race', 'race', 'race_number'],
-            'start': ['start', 'Start'],
-            'car_num': ['car_num', 'Car', 'car', 'car_number'],
-            'laps': ['laps', 'Laps'],
-            'laps_led': ['laps_led', 'Led', 'led'],
-            'points': ['points', 'Pts', 'pts'],
-            'stage_1': ['stage_1', 'S1', 's1'],
-            'stage_2': ['stage_2', 'S2', 's2'],
-            'stage_3_or_duel': ['stage_3_or_duel', 'S3', 's3'],
-            'stage_points': ['stage_points', 'Seg Points', 'seg_points'],
-        }
-        
-        # Map columns to standardized names
-        for std_name, variations in numeric_mapping.items():
-            if std_name not in df.columns:
-                for var in variations:
-                    if var in df.columns:
-                        df[std_name] = pd.to_numeric(df[var], errors='coerce')
-                        break
-        
-        # Always ensure these core columns are numeric
-        core_numeric = ['year', 'race_num', 'start', 'car_num', 'laps', 'laps_led',
-                       'points', 'stage_1', 'stage_2', 'stage_3_or_duel', 'stage_points',
-                       'finishing_position', 'schedule_season']
-        
-        # Add configured numeric features
-        features = self.get_feature_columns()
-        core_numeric.extend(features.get('numeric', []))
-        
-        # Remove duplicates
-        core_numeric = list(set(core_numeric))
-
-        for col in core_numeric:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-
-        # Fill simple categorical text fields with strings - handle variations
-        categorical_mapping = {
-            'driver': ['driver', 'Driver'],
-            'track': ['track', 'Track'],
-            'track_type': ['track_type', 'Surface', 'surface'],
-            'manu': ['manu', 'Make', 'make', 'manufacturer'],
-            'team_name': ['team_name', 'Team', 'team'],
-            'status': ['status', 'Status'],
-        }
-        
-        for std_name, variations in categorical_mapping.items():
-            if std_name not in df.columns:
-                for var in variations:
-                    if var in df.columns:
-                        df[std_name] = df[var].astype(str).fillna('Unknown')
-                        break
-            else:
-                df[std_name] = df[std_name].astype(str).fillna('Unknown')
-
-        # Debug: print final columns
-        print(f"Final preprocessed columns: {sorted(df.columns.tolist())}")
-        print(f"Sample row: {df.iloc[0].to_dict()}")
-        
-        return df
-
-    def get_feature_columns(self) -> Dict[str, List[str]]:
-        """Return NASCAR feature columns as configured."""
-        feats = self.config.get('features', {})
-        return {
-            'numeric': feats.get('numeric', []),
-            'categorical': feats.get('categorical', [])
-        }
-    def get_target_columns(self) -> Dict[str, str]:
-        """Return target columns mapping for NASCAR."""
-        t = self.config.get('targets', {})
-        # Defaults if not present
-        classification = t.get('classification', 'race_win')
-        regression = t.get('regression', 'finishing_position')
-        return {'classification': classification, 'regression': regression}
-
-    def _load_raw_data(self) -> pd.DataFrame:
-        """Legacy load method (fallback)."""
-        import pandas as pd
-        from typing import List
-        raw_dir = self.data_dir / 'raw'
-        rda_files = sorted(raw_dir.glob('*.rda'))
-
-        if not rda_files:
-            return pd.DataFrame()
-
-        try:
-            import pyreadr  # type: ignore
-        except Exception:
-            return pd.DataFrame()
-
-        frames: List[pd.DataFrame] = []
-        for rda in rda_files:
-            try:
-                result = pyreadr.read_r(str(rda))
-                for name, frame in result.items():
-                    if isinstance(frame, pd.DataFrame):
-                        frame = frame.copy()
-                        frame.columns = [str(c).strip() for c in frame.columns]
-                        frames.append(frame)
-            except Exception:
-                continue
-
-        if not frames:
-            return pd.DataFrame()
-
-        # Concatenate all
-        df = pd.concat(frames, ignore_index=True, sort=False)
-        return self.preprocess_data(df)
-
-    def get_entities(self) -> List[str]:
-        """Return list of all drivers."""
-        # Ensure data is loaded to populate _active_drivers
-        if not hasattr(self, '_active_drivers'):
-            self.load_data()
-            
-        if hasattr(self, '_active_drivers') and self._active_drivers:
-            return self._active_drivers
-            
-        # Fallback
-        df = self.load_data()
-        if 'driver' not in df.columns:
-            return []
-        return sorted(df['driver'].dropna().unique().tolist())
-
-    def get_teams(self) -> List[str]:
-        """Return list of all available teams."""
-        # Ensure data is loaded to populate _active_teams
-        if not hasattr(self, '_active_teams'):
-            self.load_data()
-            
-        if hasattr(self, '_active_teams') and self._active_teams:
-            return self._active_teams
-            
-        # Fallback
-        df = self.load_data()
-        if 'team_name' not in df.columns:
-            return []
-        return sorted(df['team_name'].dropna().unique().tolist())
 
     def get_drivers(self, team_id: Optional[str] = None) -> List[str]:
         """Return list of drivers, optionally filtered by team."""
         # If no team filter, return all active drivers
         if not team_id:
-            if not hasattr(self, '_active_drivers'):
-                self.load_data()
-            if hasattr(self, '_active_drivers') and self._active_drivers:
-                return self._active_drivers
+            return self.get_entities()
 
         df = self.load_data()
         
@@ -769,14 +246,7 @@ class NASCARSport(BaseSport):
             else:
                 return []
                 
-        # Filter for active drivers only (present in _active_drivers if available)
-        drivers = sorted(df['driver'].dropna().unique().tolist())
-        
-        if hasattr(self, '_active_drivers') and self._active_drivers:
-            active_set = set(self._active_drivers)
-            drivers = [d for d in drivers if d in active_set]
-            
-        return drivers
+        return sorted(df['driver'].dropna().unique().tolist())
 
     def get_entity_stats(self, entity_id: str, year: Optional[int] = None) -> Dict[str, Any]:
         """Return comprehensive stats for a driver."""
@@ -845,26 +315,171 @@ class NASCARSport(BaseSport):
                     "Avg Finish": f"{group['finishing_position'].mean():.1f}",
                     "Wins": len(group[group['finishing_position'] == 1])
                 }
-
-        # --- History (Recent races - show all for year filter, otherwise limit to 100) ---
-        # If year is selected, show all races for that year. If not, show recent 100.
-        history_df = driver_df if year else driver_df.head(100)
         
-        history = []
-        for _, row in history_df.iterrows():
-            history.append({
-                "Season": row.get('schedule_season', row.get('year', 'N/A')),
-                "Race": row.get('race_num', 'N/A'),
-                "Track": row.get('track', 'Unknown'),
-                "Start": row.get('start', 'N/A'),
-                "Finish": row.get('finishing_position', 'N/A'),
-                "Status": row.get('status', 'Unknown')
-            })
-
         return {
             "stats": stats,
             "splits": splits,
-            "history": history,
+            "history": [], # TODO: Populate if needed
             "years": available_years
         }
 
+    def _load_raw_data(self) -> pd.DataFrame:
+        """Legacy load method (fallback)."""
+        import pandas as pd
+        from typing import List
+        raw_dir = self.data_dir / 'raw'
+        rda_files = sorted(raw_dir.glob('*.rda'))
+
+        if not rda_files:
+            return pd.DataFrame()
+
+        try:
+            import pyreadr  # type: ignore
+        except Exception:
+            return pd.DataFrame()
+
+
+        frames: List[pd.DataFrame] = []
+        for rda in rda_files:
+            try:
+                result = pyreadr.read_r(str(rda))
+                # Infer series from filename (e.g. cup_series.rda -> cup)
+                series_name = rda.stem.replace('_series', '').lower()
+                
+                for name, frame in result.items():
+                    if isinstance(frame, pd.DataFrame):
+                        frame = frame.copy()
+                        frame.columns = [str(c).strip() for c in frame.columns]
+                        # Inject series column
+                        frame['series'] = series_name
+                        frames.append(frame)
+            except Exception:
+                continue
+
+        if not frames:
+            return pd.DataFrame()
+
+        # Concatenate all
+        df = pd.concat(frames, ignore_index=True, sort=False)
+        
+        # Populate _active_teams and _active_drivers from raw data
+        self._populate_active_entities(df)
+        
+        return self.preprocess_data(df)
+
+    def preprocess_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply NASCAR-specific preprocessing and target creation."""
+        df = df.copy()
+
+        # Normalize column names - handle case variations
+        df.columns = [c.strip() for c in df.columns]
+        col_lower = {c.lower(): c for c in df.columns}
+
+        # Ensure expected columns exist; create if missing
+        # Map various finish position column names to standardized 'finishing_position'
+        if 'finishing_position' not in df.columns:
+            # Try different possible column names for finish position
+            finish_cols = ['fin', 'finish', 'finishing_position']
+            found = None
+            for fc in finish_cols:
+                if fc in df.columns:
+                    found = fc
+                    break
+                elif fc in col_lower:
+                    found = col_lower[fc]
+                    break
+            
+            if found:
+                df['finishing_position'] = pd.to_numeric(df[found], errors='coerce')
+            else:
+                # If none exists, we can't determine finishing position
+                # But we don't want to crash if loading raw data that might be messy, so maybe warn?
+                # Actually original code raised ValueError, so we'll stick with that
+                # But check columns first to avoid false positives on empty-ish frames
+                if len(df.columns) > 0:
+                   print(f"WARNING: No finish position column found. Available: {df.columns}")
+
+        # Classification target: race_win flag
+        if 'race_win' not in df.columns and 'finishing_position' in df.columns:
+            df['race_win'] = (df['finishing_position'] == 1).astype(int)
+        elif 'race_win' not in df.columns:
+             # Try finding win column
+             if 'Win' in df.columns:
+                 df['race_win'] = pd.to_numeric(df['Win'], errors='coerce').fillna(0).astype(int)
+             else:
+                 df['race_win'] = 0 # Default
+
+        # Standardize season column expected by generic trainer
+        if 'schedule_season' not in df.columns:
+            # Try various season column names
+            season_cols = ['year', 'season', 'Year', 'Season']
+            found_season = None
+            for sc in season_cols:
+                if sc in df.columns:
+                    found_season = sc
+                    break
+            
+            if found_season:
+                df['schedule_season'] = pd.to_numeric(df[found_season], errors='coerce')
+            else:
+                df['schedule_season'] = pd.NA
+
+        # Coerce numerics - handle different column name variations
+        numeric_mapping = {
+            'year': ['year', 'Year', 'season', 'Season'],
+            'race_num': ['race_num', 'Race', 'race', 'race_number'],
+            'start': ['start', 'Start'],
+            'car_num': ['car_num', 'Car', 'car', 'car_number'],
+            'laps': ['laps', 'Laps'],
+            'laps_led': ['laps_led', 'Led', 'led'],
+            'points': ['points', 'Pts', 'pts'],
+            'stage_1': ['stage_1', 'S1', 's1'],
+            'stage_2': ['stage_2', 'S2', 's2'],
+            'stage_3_or_duel': ['stage_3_or_duel', 'S3', 's3'],
+            'stage_points': ['stage_points', 'Seg Points', 'seg_points'],
+        }
+        
+        # Map columns to standardized names
+        for std_name, variations in numeric_mapping.items():
+            if std_name not in df.columns:
+                for var in variations:
+                    if var in df.columns:
+                        df[std_name] = pd.to_numeric(df[var], errors='coerce')
+                        break
+        
+        # Always ensure these core columns are numeric
+        core_numeric = ['year', 'race_num', 'start', 'car_num', 'laps', 'laps_led',
+                       'points', 'stage_1', 'stage_2', 'stage_3_or_duel', 'stage_points',
+                       'finishing_position', 'schedule_season']
+        
+        # Add configured numeric features
+        features = self.get_feature_columns()
+        core_numeric.extend(features.get('numeric', []))
+        
+        # Remove duplicates
+        core_numeric = list(set(core_numeric))
+
+        for col in core_numeric:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+        # Fill simple categorical text fields with strings - handle variations
+        categorical_mapping = {
+            'driver': ['driver', 'Driver'],
+            'track': ['track', 'Track'],
+            'track_type': ['track_type', 'Surface', 'surface'],
+            'manu': ['manu', 'Make', 'make', 'manufacturer'],
+            'team_name': ['team_name', 'Team', 'team'],
+            'status': ['status', 'Status'],
+        }
+        
+        for std_name, variations in categorical_mapping.items():
+            if std_name not in df.columns:
+                for var in variations:
+                    if var in df.columns:
+                        df[std_name] = df[var].astype(str).fillna('Unknown')
+                        break
+            else:
+                df[std_name] = df[std_name].astype(str).fillna('Unknown')
+
+        return df

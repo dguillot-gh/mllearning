@@ -21,12 +21,16 @@ import train as train_mod
 import nascar_enhancer
 from sport_factory import SportFactory
 from simulation import SimulationEngine
+from dataset_manager import DatasetManager
+
+# Use the new MultiDatasetUpdater and others
+from data_sources import NASCARDataUpdater, NFLDataUpdater, GitHubDataSource, MultiDatasetUpdater, BaseDataUpdater
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title='Sports ML API', version='1.0')
+app = FastAPI(title='Sports ML API', version='1.2')
 
 # Dev CORS. Tighten for production.
 app.add_middleware(
@@ -39,6 +43,14 @@ app.add_middleware(
 
 CFG_DIR = REPO_ROOT / 'configs'
 MODELS_DIR = REPO_ROOT / 'models'
+
+# Data directories
+NASCAR_DATA_DIR = REPO_ROOT / 'data' / 'nascar' / 'raw'
+NFL_DATA_DIR = REPO_ROOT / 'data' / 'nfl'
+NBA_DATA_DIR = REPO_ROOT / 'data' / 'nba'
+
+# Initialize Managers
+DATASET_MANAGER = DatasetManager(REPO_ROOT / 'data')
 
 # Cache helpers
 from threading import Lock
@@ -54,7 +66,7 @@ def model_paths(sport: str, series_label: str, task: str) -> Path:
 # ---------- Health ----------
 @app.get('/health')
 def health():
-    return {'ok': True, 'sports': ['nascar', 'nfl'], 'version': '1.1'}
+    return {'ok': True, 'sports': ['nascar', 'nfl', 'nba'], 'version': '1.2'}
 
 
 # ---------- Entity Endpoints (Profiles) ----------
@@ -507,7 +519,6 @@ def enhance_data(sport: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
 class SimulationRequest(BaseModel):
     drivers: List[str]
     year: int
@@ -560,192 +571,158 @@ def get_upcoming_race(sport: str):
         return {}
 
 
-# ---------- Data Management Endpoints ----------
-
-from data_sources import NASCARDataUpdater, NFLDataUpdater, GitHubDataSource
-import os
-
-# Data directories
-NASCAR_DATA_DIR = REPO_ROOT / 'data' / 'nascar' / 'raw'
-NFL_DATA_DIR = REPO_ROOT / 'data' / 'nfl'
-NBA_DATA_DIR = REPO_ROOT / 'data' / 'nba'
-
+# ---------- Advanced Data Management Endpoints ----------
 
 @app.get('/data/status')
 def get_data_status():
     """
-    Get status of all data sources including last update times and record counts.
+    Get status of all data sources including update info.
     """
     status = {
-        "nascar": {
-            "source": "GitHub (nascaR.data)",
-            "source_url": "https://github.com/kyleGrealis/nascaR.data",
-            "files": {}
-        },
-        "nfl": {
-            "source": "Kaggle",
-            "dataset": "tobycrabtree/nfl-scores-and-betting-data",
-            "files": []
-        },
-        "nba": {
-            "source": "Kaggle",
-            "dataset": "sumitrodatta/nba-aba-baa-stats",
-            "files": []
-        }
+        "nascar": {"source": "GitHub", "files": {}, "datasets": []},
+        "nfl": {"source": "Kaggle", "files": [], "datasets": []},
+        "nba": {"source": "Kaggle", "files": [], "datasets": []}
     }
     
-    # NASCAR status
-    nascar_updater = NASCARDataUpdater(NASCAR_DATA_DIR)
-    status["nascar"]["files"] = nascar_updater.get_status()["files"]
-    
-    # Get NASCAR repo last commit info
+    # 1. NASCAR
     try:
-        source = GitHubDataSource("kyleGrealis/nascaR.data")
-        repo_info = source.get_repo_info()
-        status["nascar"]["last_commit"] = repo_info.get("last_commit")
-        status["nascar"]["commit_message"] = repo_info.get("message")
+        nascar_updater = NASCARDataUpdater(NASCAR_DATA_DIR)
+        status["nascar"]["files"] = nascar_updater.get_status()["files"]
+        status["nascar"]["datasets"] = DATASET_MANAGER.get_datasets("nascar")
+        try:
+             # Basic repo check
+             repo_info = nascar_updater.source.get_repo_info()
+             status["nascar"]["last_commit"] = repo_info.get("last_commit")
+        except:
+             pass
     except Exception as e:
-        logger.warning(f"Could not get NASCAR repo info: {e}")
-    
-    # NFL status
-    nfl_updater = NFLDataUpdater(NFL_DATA_DIR)
-    status["nfl"]["files"] = nfl_updater.get_status()["files"]
-    
-    # NBA status
-    if NBA_DATA_DIR.exists():
-        for f in NBA_DATA_DIR.glob("*.csv"):
-            stat = f.stat()
-            status["nba"]["files"].append({
-                "name": f.name,
-                "size_bytes": stat.st_size,
-                "modified": stat.st_mtime
-            })
-    
-    # Get model info for each sport
+        logger.warning(f"Error checking NASCAR status: {e}")
+
+    # 2. Generic Sports (NFL, NBA) via MultiDataset updater logic
+    for sport in ["nfl", "nba"]:
+        try:
+            data_dir = REPO_ROOT / 'data' / sport
+            # Get configured datasets
+            datasets = DATASET_MANAGER.get_datasets(sport)
+            
+            # If no datasets configured but we have legacy code relying on hardcoded defaults:
+            # For now return empty list, front-end will handle "add dataset" prompt or we add default on startup
+            # But specific to NFL, we had loose files.
+            
+            files = []
+            if data_dir.exists():
+                for f in data_dir.glob("*.csv"):
+                    stat = f.stat()
+                    files.append({
+                        "name": f.name, 
+                        "size_bytes": stat.st_size, 
+                        "modified": stat.st_mtime
+                    })
+            
+            status[sport]["files"] = files
+            status[sport]["datasets"] = datasets
+        except Exception as e:
+             logger.warning(f"Error checking {sport} status: {e}")
+
+    # Models count
     for sport in ["nascar", "nfl", "nba"]:
         model_dir = MODELS_DIR / sport
+        count = 0
+        acc = None
         if model_dir.exists():
-            models = list(model_dir.glob("**/*_model.joblib"))
-            status[sport]["models"] = len(models)
-            
-            # Get metrics if available
-            metrics_files = list(model_dir.glob("**/metrics.json"))
-            if metrics_files:
+            count = len(list(model_dir.glob("**/*_model.joblib")))
+            metrics = list(model_dir.glob("**/metrics.json"))
+            if metrics:
                 try:
-                    with open(metrics_files[0]) as f:
-                        metrics = json.load(f)
-                        status[sport]["model_accuracy"] = metrics.get("accuracy")
+                    acc = json.load(open(metrics[0])) .get("accuracy")
                 except:
                     pass
-        else:
-            status[sport]["models"] = 0
-    
+        status[sport]["models"] = count
+        status[sport]["model_accuracy"] = acc
+        
     return status
 
+@app.get('/data/datasets/{sport}')
+def get_datasets(sport: str):
+    return DATASET_MANAGER.get_datasets(sport)
 
-@app.post('/data/update/nascar')
-def update_nascar_data():
-    """
-    Pull latest NASCAR data from the nascaR.data GitHub repository.
-    """
-    try:
-        updater = NASCARDataUpdater(NASCAR_DATA_DIR)
-        result = updater.update()
-        
-        if result["success"]:
-            return {
-                "success": True,
-                "message": f"Updated {len(result['files'])} files",
-                "files": result["files"],
-                "repo_info": result.get("repo_info", {}),
-                "updated_at": result["updated_at"]
-            }
-        else:
-            raise HTTPException(
-                status_code=500, 
-                detail=f"Failed to update some files: {result['errors']}"
-            )
-    except Exception as e:
-        logger.error(f"Error updating NASCAR data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+class AddDatasetRequest(BaseModel):
+    dataset_id: str
+    type: str = "kaggle"
 
+@app.post('/data/datasets/{sport}')
+def add_dataset(sport: str, req: AddDatasetRequest):
+    result = DATASET_MANAGER.add_dataset(sport, req.dataset_id, req.type)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
 
-@app.post('/data/update/nfl')
-def update_nfl_data():
-    """
-    Pull latest NFL data from Kaggle.
-    Requires KAGGLE_USERNAME and KAGGLE_KEY environment variables.
-    """
-    try:
-        # Check for Kaggle credentials
-        kaggle_username = os.environ.get("KAGGLE_USERNAME")
-        kaggle_key = os.environ.get("KAGGLE_KEY")
-        
-        if not kaggle_username or not kaggle_key:
-            raise HTTPException(
-                status_code=400,
-                detail="Kaggle credentials not configured. Set KAGGLE_USERNAME and KAGGLE_KEY environment variables."
-            )
-        
-        updater = NFLDataUpdater(NFL_DATA_DIR, kaggle_username, kaggle_key)
-        result = updater.update()
-        
-        if result["success"]:
-            return {
-                "success": True,
-                "message": f"Updated {len(result['files'])} files",
-                "files": result["files"],
-                "updated_at": result["updated_at"]
-            }
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to update: {result['errors']}"
-            )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating NFL data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+@app.delete('/data/datasets/{sport}/{dataset_id:path}')
+def remove_dataset(sport: str, dataset_id: str):
+    # dataset_id might contain slashes "owner/dataset", handled by :path in route
+    success = DATASET_MANAGER.remove_dataset(sport, dataset_id)
+    if not success:
+         raise HTTPException(status_code=404, detail="Dataset not found")
+    return {"success": True}
 
+@app.post('/data/check-updates/{sport}')
+def check_updates(sport: str):
+    datasets = DATASET_MANAGER.get_datasets(sport)
+    if not datasets:
+        return {}
+        
+    updater = MultiDatasetUpdater(REPO_ROOT / 'data' / sport, datasets)
+    updates = updater.check_updates()
+    return updates
 
-@app.post('/data/update/nba')
-def update_nba_data(dataset: str = "sumitrodatta/nba-aba-baa-stats"):
-    """
-    Pull NBA data from Kaggle.
-    """
-    
-    try:
-        kaggle_username = os.environ.get("KAGGLE_USERNAME")
-        kaggle_key = os.environ.get("KAGGLE_KEY")
-        
-        if not kaggle_username or not kaggle_key:
-            raise HTTPException(
-                status_code=400,
-                detail="Kaggle credentials not configured."
-            )
-        
-        from data_sources import KaggleDataSource
-        source = KaggleDataSource(kaggle_username, kaggle_key)
-        
-        NBA_DATA_DIR.mkdir(parents=True, exist_ok=True)
-        success = source.download_dataset(dataset, NBA_DATA_DIR)
-        
-        if success:
-            files = [f.name for f in NBA_DATA_DIR.glob("*.csv")]
-            return {
-                "success": True,
-                "message": f"Downloaded {len(files)} files",
-                "files": files
-            }
-        else:
-            raise HTTPException(status_code=500, detail="Failed to download dataset")
+@app.get('/data/history/{sport}')
+def get_history(sport: str):
+    data_dir = REPO_ROOT / 'data' / sport
+    updater = BaseDataUpdater(data_dir) # Use base to just read history
+    return updater.get_history()
+
+# Unified update endpoint
+@app.post('/data/update/{sport}')
+def update_data(sport: str, dataset: Optional[str] = None):
+    # Special handling for NASCAR (GitHub) vs others (Kaggle)
+    # Ideally should be unified in DatasetManager too but NASCAR is special structure
+    if sport == 'nascar' and not dataset:
+        try:
+            updater = NASCARDataUpdater(NASCAR_DATA_DIR)
+            return updater.update()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
             
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating NBA data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Generic Multi-Dataset Update
+    data_dir = REPO_ROOT / 'data' / sport
+    datasets = DATASET_MANAGER.get_datasets(sport)
+    
+    if not datasets and sport in ['nfl', 'nba']:
+        # Fallback for "legacy" or "default" if datasets.json is empty?
+        # Maybe auto-add default if missing?
+        # For NFL: tobycrabtree/nfl-scores-and-betting-data
+        # For NBA: sumitrodatta/nba-aba-baa-stats
+        # Let's add them transparently if config is empty for smooth transition
+        default = None
+        if sport == 'nfl': default = "tobycrabtree/nfl-scores-and-betting-data"
+        if sport == 'nba': default = "sumitrodatta/nba-aba-baa-stats"
+        
+        if default:
+            DATASET_MANAGER.add_dataset(sport, default)
+            datasets = DATASET_MANAGER.get_datasets(sport)
+
+    if not datasets:
+         raise HTTPException(status_code=400, detail="No datasets configured for this sport. Please add one.")
+
+    updater = MultiDatasetUpdater(data_dir, datasets)
+    result = updater.update(specific_dataset_id=dataset)
+    
+    # Update timestamps in manager
+    if result["success"]:
+        for ds_id in result["updated"]:
+            DATASET_MANAGER.update_timestamp(sport, ds_id)
+            
+    return result
 
 
 class RetrainRequest(BaseModel):
