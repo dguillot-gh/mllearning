@@ -31,3 +31,4 @@ obj/
 *.tmp
 *.bak
 /models/nfl/default/classification_model.joblib
+*.joblib
