@@ -507,6 +507,12 @@ async def get_models(sport: str):
             for series_dir in models_dir.iterdir():
                 if series_dir.is_dir():
                     process_dir(series_dir, series_dir.name)
+                    
+                    # 3. Scan target subdirectories for multi-target training (e.g. models/nascar/cup/race_win/)
+                    for target_dir in series_dir.iterdir():
+                        if target_dir.is_dir():
+                            # Use series/target as the series name for display
+                            process_dir(target_dir, f"{series_dir.name}/{target_dir.name}")
         
         return models
     except Exception as e:
