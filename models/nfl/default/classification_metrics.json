@@ -1,0 +1,96 @@
+{
+  "task": "classification",
+  "accuracy": 0.591183119819141,
+  "report": "              precision    recall  f1-score   support\n\n           0       0.56      0.43      0.48      1194\n           1       0.61      0.73      0.66      1460\n\n    accuracy                           0.59      2654\n   macro avg       0.58      0.58      0.57      2654\nweighted avg       0.59      0.59      0.58      2654\n",
+  "pred_prob_mean": 0.5584853051996986,
+  "roc_auc": 0.6437966086138456,
+  "confusion_matrix": {
+    "tn": 510,
+    "fp": 684,
+    "fn": 401,
+    "tp": 1059
+  },
+  "feature_importance": [
+    {
+      "feature": "num__schedule_season",
+      "importance": 0.07820160987990984
+    },
+    {
+      "feature": "num__schedule_week",
+      "importance": 0.06772376304425054
+    },
+    {
+      "feature": "num__spread_favorite",
+      "importance": 0.06338263971352448
+    },
+    {
+      "feature": "num__weather_humidity",
+      "importance": 0.06220844813163437
+    },
+    {
+      "feature": "num__weather_temperature",
+      "importance": 0.06203965694037225
+    },
+    {
+      "feature": "num__over_under_line",
+      "importance": 0.05535688941200286
+    },
+    {
+      "feature": "num__weather_wind_mph",
+      "importance": 0.05229379752579079
+    },
+    {
+      "feature": "num__away_yards_rolling5",
+      "importance": 0.01694167719989933
+    },
+    {
+      "feature": "num__home_ppg_rolling5",
+      "importance": 0.016507289550444216
+    },
+    {
+      "feature": "num__home_yards_rolling5",
+      "importance": 0.016363423088273696
+    },
+    {
+      "feature": "num__away_ppg_rolling5",
+      "importance": 0.016042866548387838
+    },
+    {
+      "feature": "num__ppg_diff_rolling5",
+      "importance": 0.01536078397294663
+    },
+    {
+      "feature": "num__yards_diff_rolling5",
+      "importance": 0.01501110982851788
+    },
+    {
+      "feature": "num__home_first_downs_rolling5",
+      "importance": 0.014544412864194027
+    },
+    {
+      "feature": "num__away_first_downs_rolling5",
+      "importance": 0.014518579159116108
+    },
+    {
+      "feature": "num__home_turnovers_rolling5",
+      "importance": 0.01257387127311306
+    },
+    {
+      "feature": "num__away_turnovers_rolling5",
+      "importance": 0.012205772739512852
+    },
+    {
+      "feature": "cat__away_id_NYJ",
+      "importance": 0.00556447615740382
+    },
+    {
+      "feature": "cat__away_id_DEN",
+      "importance": 0.005513425406094566
+    },
+    {
+      "feature": "cat__away_id_MIN",
+      "importance": 0.005391911424852983
+    }
+  ],
+  "test_start_season": 2016
+}

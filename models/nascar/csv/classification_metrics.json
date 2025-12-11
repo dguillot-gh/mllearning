@@ -1,0 +1,101 @@
+{
+  "task": "classification",
+  "accuracy": 0.9747239976757699,
+  "report": "              precision    recall  f1-score   support\n\n         0.0       0.98      1.00      0.99      6698\n         1.0       0.58      0.23      0.33       186\n\n    accuracy                           0.97      6884\n   macro avg       0.78      0.61      0.66      6884\nweighted avg       0.97      0.97      0.97      6884\n",
+  "pred_prob_mean": 0.016586236655712128,
+  "roc_auc": 0.960697624391168,
+  "confusion_matrix": {
+    "tn": 6667,
+    "fp": 31,
+    "fn": 143,
+    "tp": 43
+  },
+  "feature_importance": [
+    {
+      "feature": "num__laps_led",
+      "importance": 0.11948342621326447
+    },
+    {
+      "feature": "cat__status_running",
+      "importance": 0.09304541349411011
+    },
+    {
+      "feature": "cat__driver_Chase Briscoe",
+      "importance": 0.03280401974916458
+    },
+    {
+      "feature": "cat__driver_Christopher Bell",
+      "importance": 0.022170986980199814
+    },
+    {
+      "feature": "num__laps",
+      "importance": 0.019909322261810303
+    },
+    {
+      "feature": "cat__driver_Kasey Kahne",
+      "importance": 0.01704326644539833
+    },
+    {
+      "feature": "cat__track_Daytona International Speedway",
+      "importance": 0.014534320682287216
+    },
+    {
+      "feature": "cat__driver_Joey Logano",
+      "importance": 0.012144731357693672
+    },
+    {
+      "feature": "cat__driver_Jimmie Johnson",
+      "importance": 0.011544160544872284
+    },
+    {
+      "feature": "cat__team_name_Front Row Motorsports",
+      "importance": 0.01143258810043335
+    },
+    {
+      "feature": "cat__driver_Kyle Busch",
+      "importance": 0.01112199854105711
+    },
+    {
+      "feature": "cat__driver_Carl Edwards",
+      "importance": 0.01111192349344492
+    },
+    {
+      "feature": "cat__team_name_Penske Racing",
+      "importance": 0.010899254120886326
+    },
+    {
+      "feature": "cat__track_Bristol Motor Speedway",
+      "importance": 0.010892321355640888
+    },
+    {
+      "feature": "cat__track_Phoenix Raceway",
+      "importance": 0.010595018044114113
+    },
+    {
+      "feature": "cat__driver_Kyle Larson",
+      "importance": 0.010365534573793411
+    },
+    {
+      "feature": "num__is_short_track",
+      "importance": 0.00976625271141529
+    },
+    {
+      "feature": "num__start",
+      "importance": 0.009753386490046978
+    },
+    {
+      "feature": "cat__team_name_Hattori Racing Enterprises",
+      "importance": 0.009715769439935684
+    },
+    {
+      "feature": "cat__track_Sonoma Raceway",
+      "importance": 0.009259135462343693
+    }
+  ],
+  "test_start_season": 2024,
+  "hyperparameters": {
+    "model_type": "xgboost",
+    "n_estimators": 200,
+    "class_weight": "balanced"
+  }
+}

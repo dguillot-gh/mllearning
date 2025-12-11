@@ -1,5 +1,64 @@
 ﻿################################################################################
-# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+# This .gitignore file prevents large files from being tracked in Git
 ################################################################################
 
+# CSV Data files (DO NOT COMMIT - these are large)
+*.csv
+data/
+!data/*.json
+!data/**/*.json
+
+# ML Model files (IMPORTANT: Keep locally, do NOT commit)
+*.joblib
+*.pkl
+*.h5
+*.pt
+*.pth
+*.model
+*.bin
+models/
+
+# Python cache and pyc files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+.venv/
+.env
+
+# IDE and Editor
+.idea/
+.vscode/
+.vs/
+*.suo
+*.user
+*.sln.docstates
+.DS_Store
+
+# Build artifacts
+bin/
+obj/
+*.dll
+*.exe
+*.o
+*.a
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# OS specific
+Thumbs.db
+.DS_Store
+nul
+
+# Node modules (if applicable)
+node_modules/
+
+# SportsBettingAnalyzer specific
 /SportsBettingAnalyzer/nul

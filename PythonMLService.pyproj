@@ -2890,6 +2890,8 @@
     <Content Include="data\nascar\raw\xfinity_series.rda" />
     <Content Include="data\nfl\raw\nfl_teams.csv" />
     <Content Include="data\nfl\raw\spreadspoke_scores.csv" />
+    <Content Include="data\README.md" />
+    <Content Include="DATA_SETUP_SUMMARY.md" />
     <Content Include="env\.gitignore" />
     <Content Include="env\Lib\site-packages\dateutil\parser\__pycache__\isoparser.cpython-313.pyc" />
     <Content Include="env\Lib\site-packages\dateutil\parser\__pycache__\_parser.cpython-313.pyc" />
@@ -9926,6 +9928,7 @@
     <Content Include="env\Scripts\pip3.exe" />
     <Content Include="env\Scripts\python.exe" />
     <Content Include="env\Scripts\pythonw.exe" />
+    <Content Include="IMPLEMENTATION_CHECKLIST.md" />
     <Content Include="mllearning\.gitignore" />
     <Content Include="mllearning\.idea\.gitignore" />
     <Content Include="mllearning\.idea\csv-editor.xml" />
@@ -20043,6 +20046,7 @@
     <Content Include="models\nascar\xfinity\regression_model.joblib" />
     <Content Include="models\nfl\classification_metrics.json" />
     <Content Include="models\nfl\classification_model.joblib" />
+    <Content Include="README.md" />
     <Content Include="requirements.txt" />
     <Content Include="scripts\models\nfl\classification_metrics.json" />
     <Content Include="scripts\models\nfl\classification_model.joblib" />
@@ -29609,7 +29613,9 @@
     <Compile Include="mllearning\src\train.py" />
     <Compile Include="mllearning\src\__init__.py" />
     <Compile Include="mllearning\tests\__init__.py" />
+    <Compile Include="scripts\setup_data.py" />
     <Compile Include="scripts\train_model.py" />
+    <Compile Include="scripts\verify_data.py" />
     <Compile Include="src\data_loader.py" />
     <Compile Include="src\model_pipeline.py" />
     <Compile Include="src\predict.py" />
